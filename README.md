@@ -1,0 +1,3 @@
+# GAI: Generating Adversarial Image
+This project intends to generate an adversarial example, given an image and an adversarial target label, using a white-box (targeted) attack approach.
+Initial implementation is based on Fast Gradient Sign Method (FGSM) of attack, using a pretrained ResNet50 classifier and Structural Similarity Index (SSIM) metric as the constraint on the amount of pertubation applied to the input image. Hyperparameter search for the suitable FGSM's epsilon parameter and minimum SSIM value required to maintain perceptual consistency between the pertubed image and input image whilst realising adversarial effect is conducted and evaluated using the ImageNet ILSVRC2012_img_val dataset. 
