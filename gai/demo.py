@@ -1,0 +1,109 @@
+"""
+Main script to generate adversarial examples for classification models.
+Loads an image, applies an adversarial attack, and compares the original 
+and adversarial predictions.
+"""
+import torch
+import argparse
+from pathlib import Path
+from gai import GAI, Classifier, Attack, Similarity
+from utilities import load_image_from_file, tensor_to_pil, display_example
+
+if __name__ == '__main__':
+
+    parser=argparse.ArgumentParser()
+
+    parser.add_argument('-ifp', '--image_file_path', required = True,
+                        help = 'Path to an image file.')
+    
+    parser.add_argument('-tgt', '--advers_target', type = int, required = True,
+                        help = 'Adversarial target label. Integer of range [0,999] or string available in imagenet classes.')
+        
+    parser.add_argument('-ild', '--image_loader', default = 'load_image_from_file',
+                        help = 'Exact name of function to read and load image file.')    
+    
+    parser.add_argument('-clf', '--classifier',  default = 'resnet50',
+                        help = 'Name of classifier')
+
+    parser.add_argument('-atk', '--attack',  default = 'fgsm',
+                        help = 'Name of adversarial attack algorithm.')
+
+    parser.add_argument('-sim', '--sim',  default = 'ssim',
+                        help = 'Name similarity measure.')
+
+    parser.add_argument('-mss', '--min_ssim', type = float, default = 0.95,
+                        help = 'Minimum structural similarity index value')
+     
+    parser.add_argument('-eps', '--epsilon', type = float, default = 0.01,
+                        help = 'Maximum epsilon')     
+
+    parser.add_argument('-svp', '--save_path', default = None,
+                        help = 'Path to save results.')
+
+
+    args = parser.parse_args() 
+
+    classifier = Classifier(args.classifier)
+    device = classifier.device
+
+    # Instantiate adversarial image generation class
+    gai = GAI(
+    attack=Attack(args.attack).attack, 
+    sim=Similarity(args.sim).metric, 
+    model=classifier.model,
+    criterion=classifier.criterion
+    )
+
+    gai = GAI(
+        attack=Attack(args.attack).attack, 
+        sim=Similarity(args.sim).metric, 
+        model=classifier.model,
+        criterion=classifier.criterion
+    )
+
+    # Load ImageNet class labels
+    current_dir = Path(__file__).resolve().parent
+    parent_dir = current_dir.parent
+    imagenet_classes_path = parent_dir / "data" / "imagenet_classes.txt"
+
+    if not imagenet_classes_path.exists():
+        raise FileNotFoundError(f"{imagenet_classes_path} does not exist.")
+    with open(imagenet_classes_path, "r") as f:
+        class_labels = [line.strip() for line in f.readlines()]
+
+    # Get numeric value for the adversarial target class whether provided as a number or as string 
+    try:
+        advers_target_idx = int(args.advers_target)
+    except ValueError:
+        try:
+            # Get the numeric index of the class name
+            advers_target_idx = class_labels.index(args.advers_target)
+        except ValueError:
+            raise ValueError(f"Class '{args.advers_target}' not found in imagenet class_labels.")
+
+    # Load input image 
+    valid_loaders = ['load_image_from_file']  # Extend this list if there are more loaders
+    if args.image_loader not in valid_loaders:
+        raise ValueError(f"Invalid image loader: {args.image_loader}. Expected one of {valid_loaders}.")
+    if args.image_loader == 'load_image_from_file':
+        orig_img = load_image_from_file(args.image_file_path, transform=classifier.transform)
+
+    # Generate adversarial example
+    advers_example = gai.gen_advers_example(orig_img, torch.tensor(advers_target_idx), torch.tensor(args.epsilon), args.min_ssim)
+
+    # Make predictions on the original image and on the adversarial example
+    _, orig_pred_class_idx  = gai.predict_class(orig_img)
+    _, adv_pred_class_idx   = gai.predict_class(advers_example)
+
+    if args.save_path is not None:
+        save_path = args.save_path
+    else:
+        save_path = "./adversarial_example.png"
+
+    display_example(
+        original_image = tensor_to_pil(orig_img), 
+        adversarial_image = tensor_to_pil(advers_example), 
+        predicted_class_original = class_labels[orig_pred_class_idx.item()],
+        predicted_class_adversarial = class_labels[adv_pred_class_idx.item()], 
+        save_path=save_path
+    )
