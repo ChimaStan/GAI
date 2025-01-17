@@ -1,12 +1,13 @@
-name: myenv
+name: gaienv
 channels:
   - conda-forge
   - defaults
 dependencies:
-  - python=3.10
+  - python>=3.10
   - pytorch>=1.13.0
   - numpy>=1.21.0
   - pillow>=8.0.0
+  - pathlib>=1.0.1
   - matplotlib>=3.4.0
   - torchvision>=0.14.0
   - scikit-image>=0.19.0

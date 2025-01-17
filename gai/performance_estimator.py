@@ -2,6 +2,7 @@ import csv
 import random
 import torch
 import argparse
+from pathlib import Path
 from torch.utils.data import DataLoader, Subset
 from torchvision.datasets import ImageNet
 from gai import GAI, Classifier, Attack, Similarity
@@ -80,11 +81,11 @@ class AdversAccuracyEstimator:
                     epsilon,
                     min_ssim,             
                     advers_example, 
-                    advers_target, 
-                    adv_pred_class, 
+                    advers_target.item(), 
+                    adv_pred_class.item(), 
                     orig_img, 
-                    orig_pred_class,
-                    orig_label, 
+                    orig_pred_class.item(),
+                    orig_label.item(), 
                     idx=total_samples - 1,
                 )                
 
@@ -155,13 +156,13 @@ if __name__ == '__main__':
     if args.data_loader == 'ImageNet':
         dataset = ImageNet(root=args.dataset_path, split=args.split_name, transform=classifier.transform)
     else:
-        raise ValueError(f"Dataset loader {args.loader} not found.")
+        raise ValueError(f"Dataset loader {args.data_loader} not found.")
     dloader = DataLoader(dataset, batch_size=max(8, len(dataset)), shuffle=False)
 
     # Randomly select indices for a subset of the dataset to use for estimating performance
     if args.split_prop > 0.0:    
         total_indices = list(range(len(dataset)))
-        random.seed(args.seed)
+        random.seed(args.random_seed)
         subset_indices = random.sample(total_indices, int(args.split_prop * len(total_indices)))
         subset = Subset(dataset, subset_indices)
         if len(subset) > 0:
@@ -170,7 +171,7 @@ if __name__ == '__main__':
     estim =  AdversAccuracyEstimator(gai, dloader, device, args.save_path)
 
     # Estimate adversarial accuracy and write results
-    csv_path = "adversarial_accuracy_results.csv"
+    csv_path = Path("./data/output/gai/adversarial_accuracy_results.csv")
     with open(csv_path, mode='a', newline='') as file:
         writer = csv.writer(file)
 

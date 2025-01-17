@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torchvision.models as models
 import torchvision.transforms as transforms
+from torchvision.models import resnet50, ResNet50_Weights
 from skimage.metrics import structural_similarity as compare_ssim
 
 class GAI:
@@ -65,7 +66,7 @@ class GAI:
         advers_img = self.attack(image, epsilon, gradient)
         return advers_img, gradient
 
-    def ensure_similarity(self, image, advers_img, gradient, epsilon, min_ssim, factor=2):
+    def ensure_similarity(self, image, advers_img, gradient, epsilon, min_ssim, factor=2, max_attempts=2):
         """
         Ensures the adversarial image satisfies a similarity threshold.
 
@@ -80,12 +81,16 @@ class GAI:
         Returns:
             torch.Tensor: Adjusted adversarial image.
         """
-        similarity = self.sim(image, advers_img)
-        if similarity < min_ssim:
-            print(f"SSIM ({similarity:.2f}) below similarity threshold of {min_ssim}. Reducing epsilon by {factor}.")
-            epsilon /= factor
+        for attempt in range(max_attempts):
+            similarity = self.sim(image, advers_img)
+
+            if similarity >= min_ssim:
+                return advers_img
+            
+            epsilon = max(1e-4, epsilon/factor) 
             advers_img = self.attack(image, epsilon, gradient)
-            self.ensure_similarity(image, advers_img, gradient, epsilon, min_ssim)
+
+        print(f"Max attempts ({attempt + 1}) to adhere to minimum SSIM constraint ({min_ssim}) reached. \nFinal SSIM achieved: {similarity:.3f}.")    
         return advers_img
     
     def gen_advers_example(self, image, target_class, epsilon, min_ssim):
@@ -160,7 +165,8 @@ class Classifier:
         """
         Load a pre-trained ResNet-50 model and set up appropriate image transformations.
         """        
-        model = models.resnet50(pretrained=True)
+        # model = resnet50(pretrained=True)
+        model = resnet50(weights=ResNet50_Weights.DEFAULT)
         model.eval()
 
         self.transform = transforms.Compose([
@@ -241,9 +247,16 @@ class Similarity:
             raise ValueError(f"Similarity metric {value} is not implemented.")
     
     def _ssim(self, original, adversarial):
-        original_np = original.squeeze().permute(1, 2, 0).cpu().numpy()
-        adversarial_np = adversarial.squeeze().permute(1, 2, 0).cpu().numpy()
-        ssim_value = compare_ssim(original_np, adversarial_np, multichannel=True)
+        original_np = original.squeeze().permute(1, 2, 0).cpu().detach().numpy()
+        adversarial_np = adversarial.squeeze().permute(1, 2, 0).cpu().detach().numpy()
+        ssim_value = compare_ssim(
+            original_np, 
+            adversarial_np,
+            win_size=3, 
+            multichannel=True, 
+            channel_axis=2,
+            data_range=original_np.max() - original_np.min()
+        )
         return ssim_value
 
     # Extend or integrate with other solutions.

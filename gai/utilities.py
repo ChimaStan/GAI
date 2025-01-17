@@ -3,6 +3,9 @@ import numpy as np
 from PIL import Image
 from pathlib import Path
 import matplotlib.pyplot as plt
+import torch
+import torchvision.transforms as transforms
+
 
 def load_image_from_file(image_file, transform=None):
     image = Image.open(image_file).convert('RGB')
@@ -10,18 +13,44 @@ def load_image_from_file(image_file, transform=None):
         image = transform(image).unsqueeze(0)
     return image
 
+def get_mean_std_from_transform(transform):
+    for t in transform.transforms:
+        if isinstance(t, transforms.Normalize):
+            return t.mean, t.std
+    return None, None  # Return None if Normalize is not in the transform
 
-def tensor_to_pil(pt_image):
+def tensor_to_pil(pt_image, mean=None, std=None):
     """
     Converts an image in PyTorch tensor format to a PIL Image.
 
     Args:
-        tensor (torch.Tensor): A tensor of shape (C, H, W) with pixel values in [0, 1].
+        pt_image (torch.Tensor): A tensor of shape (C, H, W) with normalized pixel values.
+        mean (list or None): Mean values used for normalization. If None, no mean subtraction is applied.
+        std (list or None): Standard deviation values used for normalization. If None, no scaling is applied.
+
 
     Returns:
-        PIL.Image.Image: The corresponding PIL image.
+        PIL.Image.Image: The corresponding denormalised PIL image.
     """
-    np_image = pt_image.squeeze().permute(1, 2, 0).cpu().numpy()
+
+    # Default mean and std if None is provided
+    if mean is None:
+        mean = [0.0, 0.0, 0.0]
+    if std is None:
+        std = [1.0, 1.0, 1.0]
+
+    # Convert to PyTorch tensors
+    mean = torch.tensor(mean).view(-1, 1, 1)
+    std = torch.tensor(std).view(-1, 1, 1)
+
+    # Denormalize the tensor
+    pt_image = pt_image * std + mean
+    
+    # Clip values to [0, 1] range to avoid artifacts
+    pt_image = torch.clamp(pt_image, 0, 1)
+
+    # Convert to PIL
+    np_image = pt_image.squeeze().permute(1, 2, 0).cpu().detach().numpy()
     pil_image = Image.fromarray((np_image * 255).astype(np.uint8))
     return pil_image
 
@@ -65,7 +94,7 @@ def save_result(
     tensor_to_pil(advers_example).save(adv_img_path)
 
     # Save metadata to a CSV file
-    csv_path = save_path / f"results-ssim{min_ssim}-eps{epsilon}.csv"
+    csv_path = save_path / f"results-ssim{min_ssim:.2f}-eps{epsilon:.5f}.csv"
     write_header = not csv_path.exists()  # Check if the CSV file needs a header
     with csv_path.open(mode='a', newline='') as csvfile:
         writer = csv.writer(csvfile)
@@ -109,8 +138,9 @@ def plot_accuracy_vs_epsilon(perf, epsilon_list, min_ssim, save_path):
 
 def display_example(original_image, 
                     adversarial_image, 
-                    predicted_class_original, 
-                    predicted_class_adversarial, 
+                    predicted_class_original,
+                    advers_target_class,  
+                    predicted_class_advers, 
                     save_path=None):
     """
     Displays a figure with original and adversarial images along with predicted classes.
@@ -120,7 +150,7 @@ def display_example(original_image,
         original_image: The original image to display (as a numpy array or similar format).
         adversarial_image: The adversarial image to display (as a numpy array or similar format).
         predicted_class_original: The predicted class for the original image.
-        predicted_class_adversarial: The predicted class for the adversarial image.
+        predicted_class_advers: The predicted class for the adversarial image.
         save_path: Path to save the figure. If None, the figure is not saved.
     """
     fig, axes = plt.subplots(1, 2, figsize=(10, 5))
@@ -138,8 +168,16 @@ def display_example(original_image,
     axes[1].imshow(adversarial_image)
     axes[1].axis('off')
     axes[1].set_title(r'$\bf{Adversarial\ image}$', fontsize=14)
+
+    # Adversarial target class
+    axes[1].text(0.5, -0.1, 
+                 f'Target class: {advers_target_class}', 
+                 fontsize=12, 
+                 ha='center', va='center', transform=axes[1].transAxes)
+    
+    # Predicted class for adversarial image
     axes[1].text(0.5, -0.2, 
-                 f'Predicted class: {predicted_class_adversarial}', 
+                 f'Predicted class: {predicted_class_advers}', 
                  fontsize=12, 
                  ha='center', va='center', transform=axes[1].transAxes)
 
