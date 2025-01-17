@@ -8,13 +8,13 @@ Initial implementation is based on Fast Gradient Sign Method (FGSM) of attack, u
 
 - git clone GAI remote repo 
 
-    git clone https://github.com/ChimaStan/GAI.git
+    git clone https://github.com/chimastan/GAI.git
 
 - Navigate to the cloned parent directory (GAI)
 
 - Create a Docker image with dependencies installed
 
-    docker build -t gai:env
+    docker build -t gai:env .
 
 - Start docker in interactive mode binding GAI and directory of image file(s) you wish to test to the container
 
